@@ -1,0 +1,39 @@
+sudo: required
+
+language: cpp
+
+services:
+  - docker
+
+env:
+  global:
+    - TAG=ci
+    - DIST_NAME=ubuntu
+  matrix:
+    - DIST_VERS=16.04
+    - DIST_VERS=14.04
+
+before_cache:
+  # Save tagged docker images
+  - >
+    mkdir -p $HOME/docker && docker images -a --filter='dangling=false' --format '{{.Repository}}:{{.Tag}} {{.ID}}'
+    | xargs -n 2 -t sh -c 'test -e $HOME/docker/$1.tar.gz || docker save $0 | gzip -2 > $HOME/docker/$1.tar.gz'
+
+
+before_install:
+  # Load cached docker images
+  - echo "** Load Docker cache **"
+  - if [[ -d $HOME/docker ]]; then ls $HOME/docker/*.tar.gz | xargs -I {file} sh -c "zcat {file} | docker load"; fi
+  - echo "** Build Docker image **"
+  - docker build --rm=true --file=ci/Dockerfile.${DIST_NAME}-${DIST_VERS} --tag=${DIST_NAME}-${DIST_VERS}:${TAG} .
+  - docker run --name ${TAG} -d -t ${DIST_NAME}-${DIST_VERS}:${TAG} /bin/bash > container.id
+  - docker ps -a
+  - docker exec -t ${TAG} hostname
+  - docker exec -t ${TAG} uname -a
+  - docker exec -t ${TAG} cat /etc/lsb-release
+
+
+
+cache:
+  directories:
+    - $HOME/docker
